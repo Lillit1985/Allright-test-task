@@ -64,4 +64,18 @@ export const config = {
   testUser: {
     emailFor: (runId: string) => `qa-automation+${runId}@example-testing.invalid`,
   },
+
+  /**
+   * Admin API access, used for (a) a third, independent verification signal
+   * next to URL/network capture, and (b) cleanup of test-created data.
+   * TO CONFIRM: real paths — these are guesses based on typical admin-panel
+   * REST conventions, not on the actual admin API contract.
+   */
+  adminApi: {
+    baseUrl: process.env.ADMIN_API_BASE_URL ?? "https://stage.allright.com",
+    bearerTokenEnvVar: "ADMIN_BEARER_TOKEN",
+    findUserByEmailPath: (email: string) => `/admin/api/users?email=${encodeURIComponent(email)}`,
+    findBookingsForUserPath: (userId: string) => `/admin/api/users/${userId}/bookings`,
+    deleteUserPath: (userId: string) => `/admin/api/users/${userId}`,
+  },
 };

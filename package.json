@@ -10,6 +10,8 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
+    "@types/node": "^26.1.1",
+    "dotenv": "^16.4.5",
     "typescript": "^5.9.3",
     "zod": "^3.25.76"
   }
