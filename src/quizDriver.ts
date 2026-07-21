@@ -19,7 +19,8 @@ import { hasSuccessfulEvent } from "./outcomeCapture";
  */
 export async function walkQuizToCompletion(
   page: Page,
-  capturedEvents: CapturedApiEvent[]
+  capturedEvents: CapturedApiEvent[],
+  testEmail: string
 ): Promise<QuizRunResult> {
   const start = Date.now();
   let steps = 0;
@@ -40,7 +41,7 @@ export async function walkQuizToCompletion(
       };
     }
 
-    await answerVisibleInputsGenerically(page);
+    await answerVisibleInputsGenerically(page, testEmail);
 
     const clicked = await clickForwardCta(page);
     if (!clicked) {
@@ -69,7 +70,7 @@ export async function walkQuizToCompletion(
   };
 }
 
-async function answerVisibleInputsGenerically(page: Page): Promise<void> {
+async function answerVisibleInputsGenerically(page: Page, testEmail: string): Promise<void> {
   // Single/multi choice presented as radio or checkbox: pick the first enabled one.
   const radios = page.locator('input[type="radio"]:visible, [role="radio"]:visible');
   if ((await radios.count()) > 0) {
@@ -79,7 +80,21 @@ async function answerVisibleInputsGenerically(page: Page): Promise<void> {
     }
   }
 
-  // Free-text fields: fill with an obviously synthetic, clearly-tagged value.
+  // Email field: use the tagged test email so the account is identifiable
+  // and cleanable, and so the admin-API lookup after the run can find it.
+  const emailInputs = page.locator('input[type="email"]:visible');
+  const emailCount = await emailInputs.count();
+  for (let i = 0; i < emailCount; i++) {
+    const el = emailInputs.nth(i);
+    const currentValue = await el.inputValue().catch(() => "");
+    if (!currentValue) {
+      await el.fill(testEmail).catch(() => {});
+    }
+  }
+
+  // Other free-text fields: fill with the confirmed test-data naming
+  // convention ("test"/"тест" in the name auto-excludes the account from
+  // analytics — see config.testUser and STRATEGY.md/README).
   const textInputs = page.locator(
     'input[type="text"]:visible, input:not([type]):visible, textarea:visible'
   );
@@ -88,7 +103,7 @@ async function answerVisibleInputsGenerically(page: Page): Promise<void> {
     const el = textInputs.nth(i);
     const currentValue = await el.inputValue().catch(() => "");
     if (!currentValue) {
-      await el.fill("QA Automation").catch(() => {});
+      await el.fill(config.testUser.name).catch(() => {});
     }
   }
 
