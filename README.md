@@ -70,35 +70,55 @@ warning.
 availability from a shared, limited stage pool. See STRATEGY.md for why I'd
 keep scheduled-run frequency conservative because of this.
 
-## Confirmed vs. still-guessed (from the team's answers)
+## Confirmed vs. still-guessed (from the team's answers + a real capture)
 
 **Confirmed:**
 - The API is JSON:API-style (`/api/v1/...`, kebab-case attributes,
+  `Content-Type: application/vnd.api+json`,
   `{"data":{"type":"...","id":"...","attributes":{...}}}`).
-- Both account-creation and trial-booking responses return the created
-  entity's id — `entityIdFor()` in `outcomeCapture.ts` extracts it, and the
-  test asserts on its presence, not just the status code.
+- **The user resource is `/api/v1/users/:id`, and there is no single
+  "sign-up" call** — the quiz PATCHes that same resource after nearly every
+  step, accumulating `funnel-data`. So "account created" is verified by
+  *content* (does the response carry a real `email`), not by matching one
+  specific URL — see `apiEvents.accountCreated.isValid` in `src/config.ts`
+  and `hasConfirmedEvent()` in `src/outcomeCapture.ts`.
+- Both account and (expected) booking responses return the entity's id —
+  `entityIdFor()` extracts it, and the test asserts on its presence.
 - Accounts with `test`/`тест` in the **name** are auto-excluded from
   analytics — the driver's generic text-fill uses `config.testUser.name`
-  (`"Test QA Automation"`) for exactly this reason, not an arbitrary string.
+  (`"Test QA Automation"`) for exactly this reason.
 - Deletion is `PATCH /api/v1/users/:id/?fields[user]=is_deleted,deletion_reason`
-  with a JSON:API body setting `is-deleted: true`, and cascades to cancel
-  future lessons. Implemented verbatim in `deleteTestUser()`.
+  with a JSON:API body setting `is-deleted: true`, cascades to cancel future
+  lessons. Implemented verbatim in `deleteTestUser()`, and now doubly
+  confident since it matches the confirmed `/api/v1/users/:id` resource path
+  seen in real traffic.
 - Scheduling on stage is **not** mocked — real teacher matching against a
-  shared, limited pool. Bookings can accumulate if runs are too frequent.
-- A/B variants are assigned per-user via an experiments mechanism; which
-  variant a given run got is left to my design (see below and STRATEGY.md).
+  shared, limited pool.
+- Confirmed noise sources to exclude from capture: Intercom (`identify`,
+  `ping`, `launcher_settings`, `check-captcha` traffic under `intercom.io`),
+  GA4 `collect` calls, GTM — all excluded via `config.excludedHosts`.
 
-**Still guessed** (need one real quiz run in DevTools' Network tab to nail
-down — the team confirmed these paths are visible there):
-- Exact path segments for the account-creation and trial-booking calls
-  (`config.apiEvents.*.urlPattern` — currently a loose regex matching
-  `sign-up`/`register`/`users` and `booking`/`trial`/`lesson`).
+**Still guessed** (the actual trial-booking confirmation call hasn't been
+observed yet — the captures so far show fetching `available-timeslots`, not
+the confirmation step itself):
+- The exact call that books the trial lesson
+  (`config.apiEvents.trialBooked.urlPattern` — currently matches anything
+  under `/api/v1/...` containing `lesson(s)`/`trial`/`booking`, since the
+  user resource's `lessons` relationship name is confirmed but the create
+  call itself isn't).
 - The admin "find user by email" path (`config.adminApi.findUserByEmailPath`
-  — guessed in the same JSON:API filter convention as the confirmed delete
-  call, but not verified).
-- The relationship path for a user's lessons/bookings
-  (`config.adminApi.findBookingsForUserPath`).
+  — now more likely correct, since it follows the confirmed `/api/v1/users`
+  base + JSON:API filter convention, but still unverified).
+- The exact relationship path for a user's lessons
+  (`config.adminApi.findBookingsForUserPath` — relationship name `lessons`
+  is confirmed from a real response's `relationships` block, but whether
+  it's `/api/v1/users/:id/lessons` or a `/relationships/lessons` variant
+  isn't).
+
+**One thing to flag, not code-related:** a shared screenshot included a full
+`Authorization: Bearer …` token in plain text. I haven't used or stored it.
+Worth rotating that token and cropping the Authorization row out of future
+Network-tab screenshots before sharing.
 
 ## How the experiment/variant question is handled
 

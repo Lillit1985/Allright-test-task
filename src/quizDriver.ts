@@ -1,7 +1,7 @@
 import { Page } from "@playwright/test";
 import { config } from "./config";
 import { CapturedApiEvent, QuizRunResult } from "./types";
-import { hasSuccessfulEvent } from "./outcomeCapture";
+import { hasConfirmedEvent } from "./outcomeCapture";
 
 /**
  * Walks the quiz forward without any knowledge of its current step
@@ -28,8 +28,8 @@ export async function walkQuizToCompletion(
   while (steps < config.driver.maxSteps && Date.now() - start < config.driver.maxTotalMs) {
     const successByUrl = config.successUrlPatterns.some((p) => p.test(page.url()));
     const successByApi =
-      hasSuccessfulEvent(capturedEvents, "account-created") &&
-      hasSuccessfulEvent(capturedEvents, "trial-booked");
+      hasConfirmedEvent(capturedEvents, "account-created") &&
+      hasConfirmedEvent(capturedEvents, "trial-booked");
 
     if (successByUrl || successByApi) {
       return {
@@ -58,8 +58,8 @@ export async function walkQuizToCompletion(
 
   const successByUrl = config.successUrlPatterns.some((p) => p.test(page.url()));
   const successByApi =
-    hasSuccessfulEvent(capturedEvents, "account-created") &&
-    hasSuccessfulEvent(capturedEvents, "trial-booked");
+    hasConfirmedEvent(capturedEvents, "account-created") &&
+    hasConfirmedEvent(capturedEvents, "trial-booked");
 
   return {
     reachedSuccess: successByUrl || successByApi,

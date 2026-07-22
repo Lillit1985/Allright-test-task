@@ -3,7 +3,7 @@ import {
   captureOutcomeEvents,
   captureExperimentDiagnostics,
   entityIdFor,
-  hasSuccessfulEvent,
+  hasConfirmedEvent,
 } from "../src/outcomeCapture";
 import { walkQuizToCompletion } from "../src/quizDriver";
 import { config } from "../src/config";
@@ -93,21 +93,24 @@ test("completing the Charlie sign-up quiz creates an account and books a trial l
   ).toBe(true);
 
   // --- Signal 1: network capture ---
+  // "account-created" is confirmed to be the user resource carrying a real
+  // email, not a specific URL — see config.ts. hasConfirmedEvent checks the
+  // content, not just a 2xx status.
   expect(
-    hasSuccessfulEvent(capturedEvents, "account-created"),
-    "Expected a successful account-creation API response, got: " +
+    hasConfirmedEvent(capturedEvents, "account-created"),
+    "Expected a user PATCH/POST response with a real email set, got: " +
       JSON.stringify(capturedEvents.filter((e) => e.name === "account-created"))
   ).toBe(true);
 
   expect(
-    hasSuccessfulEvent(capturedEvents, "trial-booked"),
+    hasConfirmedEvent(capturedEvents, "trial-booked"),
     "Expected a successful trial-booking API response, got: " +
       JSON.stringify(capturedEvents.filter((e) => e.name === "trial-booked"))
   ).toBe(true);
 
-  // Both endpoints are confirmed to return the created entity's id — assert
-  // on that rather than just the status code, since a 2xx with no id would
-  // indicate the response shape changed under us.
+  // Both are confirmed/expected to return the entity's id — assert on that
+  // rather than just the status code, since a 2xx with no id would indicate
+  // the response shape changed under us.
   const createdUserId = entityIdFor(capturedEvents, "account-created");
   expect(createdUserId, "account-created response had no extractable id").not.toBeNull();
 

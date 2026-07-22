@@ -1,18 +1,24 @@
 /**
- * Confirmed-vs-guessed status of everything below (as of the latest team
- * answers):
+ * Confirmed-vs-guessed status of everything below (as of the latest real
+ * Network-tab capture):
  *   CONFIRMED — the API is JSON:API-style (`/api/v1/...`, kebab-case
- *     attributes, `{"data":{"type":"...","id":"...","attributes":{...}}}`),
- *     both account-creation and trial-booking responses return the created
- *     entity's id, deletion is a soft-delete via PATCH that cascades to
- *     cancel future lessons, and test accounts are auto-excluded from
- *     analytics by having "test"/"тест" in the name.
- *   STILL GUESSED — the exact path segments for account-creation and
- *     trial-booking calls, and the admin "find user by email" path. These
- *     are visible in the Network tab during a real quiz run; that's the
- *     next concrete step (see README).
- * Keeping all of it here, isolated from driver/test logic, means updating
- * a path or adding a new A/B variant's CTA text is a one-line edit.
+ *     attributes, `Content-Type: application/vnd.api+json`,
+ *     `{"data":{"type":"...","id":"...","attributes":{...}}}`). The user
+ *     resource lives at `/api/v1/users/:id`. Deletion is a soft-delete PATCH
+ *     that cascades to cancel future lessons. Test accounts are
+ *     auto-excluded from analytics by having "test"/"тест" in the name.
+ *   IMPORTANT DESIGN SHIFT — there is no single "sign-up" POST. The quiz
+ *     creates the user record early (anonymous/lead), then PATCHes the same
+ *     `/api/v1/users/:id` resource after nearly every step, accumulating
+ *     `funnel-data` (goals, child info, schedule preferences, etc.). So
+ *     "account created" can't be pinned to one specific call by URL alone —
+ *     it's better verified by *content*: does the user resource carry a
+ *     real email (the point at which a lead becomes a contactable account).
+ *     `apiEvents.accountCreated.isValid` encodes exactly that, instead of
+ *     relying on a URL pattern to mean something the API doesn't guarantee.
+ *   STILL GUESSED — the exact call that books the trial lesson (not seen
+ *     yet — the captures so far show fetching available-timeslots, not the
+ *     confirmation step itself), and the admin "find user by email" path.
  */
 
 export const config = {
@@ -46,31 +52,43 @@ export const config = {
 
   /**
    * API calls that represent the two business facts we actually care about.
-   * JSON:API response shape confirmed (both return the created entity's id);
-   * exact path segments still need a look at the Network tab during one
-   * real quiz run — grep for "sign-up"/"users" and "lesson"/"booking".
    */
   apiEvents: {
     accountCreated: {
       name: "account-created",
-      urlPattern: /\/api\/.*(sign-?up|register|users)(?!.*(lesson|booking))/i,
-      methods: ["POST", "PUT"],
+      // CONFIRMED path: the user resource is PATCHed repeatedly through the
+      // quiz. Matching on the resource path, not a verb like "sign-up".
+      urlPattern: /\/api\/v1\/users\/\d+/i,
+      methods: ["POST", "PATCH", "PUT"],
+      // The business fact isn't "this specific call happened" — it's "the
+      // user resource now has a real email". Any of the many PATCH calls
+      // through the quiz can be the one that first sets it.
+      isValid: (body: unknown): boolean => {
+        const attrs = (body as any)?.data?.attributes;
+        const email = attrs?.email;
+        return typeof email === "string" && email.includes("@");
+      },
     },
     trialBooked: {
       name: "trial-booked",
-      urlPattern: /\/api\/.*(booking|trial|lesson)/i,
-      methods: ["POST", "PUT"],
+      // GUESSED — not yet observed. The confirmed relationship name on the
+      // user resource is "lessons" (see STRATEGY.md/README), so matching on
+      // that plus common synonyms until the real confirmation-step call is
+      // captured.
+      urlPattern: /\/api\/v1\/.*(lessons?|trial|booking)/i,
+      methods: ["POST", "PATCH", "PUT"],
     },
   },
 
   /**
    * Third-party hosts CONFIRMED (from a real Network-tab capture) to be
-   * analytics/tracking noise — Intercom launcher/metrics calls, GA4 collect
-   * calls. Belt-and-suspenders on top of the `/api/` requirement already in
-   * apiEvents patterns: GA4 collect calls embed the page's own URL (which
-   * legitimately contains "sign-up") in an encoded referrer query param, so
-   * relying on urlPattern alone was a latent false-positive risk. This list
-   * is checked first and short-circuits capture regardless of urlPattern.
+   * analytics/tracking noise — Intercom launcher/metrics/identify/ping
+   * calls, GA4 collect calls, GTM. Belt-and-suspenders on top of the
+   * `/api/` requirement already in apiEvents patterns: GA4 collect calls
+   * embed the page's own URL (which legitimately contains "sign-up") in an
+   * encoded referrer query param, so relying on urlPattern alone was a
+   * latent false-positive risk. This list is checked first and
+   * short-circuits capture regardless of urlPattern.
    */
   excludedHosts: [/\bintercom\.io$/i, /\bgoogle-analytics\.com$/i, /\bgoogletagmanager\.com$/i],
 
@@ -99,7 +117,9 @@ export const config = {
    * "test"/"тест" in the NAME are auto-excluded from analytics — so the
    * driver's generic name-field fill (see quizDriver.ts) uses this value,
    * not an arbitrary string. Email is also tagged for a belt-and-suspenders
-   * filter and so cleanup can find the right account.
+   * filter and so cleanup can find the right account. (A real captured
+   * example used "test231@gmail.com" — our tagged format follows the same
+   * "test" convention, just namespaced per run.)
    */
   testUser: {
     name: "Test QA Automation",
@@ -107,20 +127,23 @@ export const config = {
   },
 
   /**
-   * Admin API. Deletion mechanism CONFIRMED (soft-delete, JSON:API PATCH,
-   * cascades to cancel future lessons — so no separate lesson cleanup is
-   * needed). Lookup path is still a guess, written in the same JSON:API
-   * filter convention as the confirmed delete call.
+   * Admin API. Deletion mechanism and base resource path are now CONFIRMED
+   * to match `/api/v1/users/:id` exactly (soft-delete via PATCH, cascades
+   * to cancel future lessons — so no separate lesson cleanup is needed).
+   * The email-filter lookup path is still a guess, but is now much more
+   * likely correct since it follows the same confirmed `/api/v1/users`
+   * base and JSON:API filter convention.
    */
   adminApi: {
     baseUrl: process.env.ADMIN_API_BASE_URL ?? "https://stage.allright.com",
     bearerTokenEnvVar: "ADMIN_BEARER_TOKEN",
-    // GUESS, in JSON:API filter convention — confirm exact path with the team.
+    // GUESS, in the confirmed JSON:API filter convention.
     findUserByEmailPath: (email: string) =>
       `/api/v1/users?filter[email]=${encodeURIComponent(email)}`,
-    // GUESS — confirm relationship path (could be /lessons instead of /bookings).
+    // GUESS — the relationship is confirmed to be named "lessons" on the
+    // user resource; exact full path (direct vs. /relationships/lessons) unconfirmed.
     findBookingsForUserPath: (userId: string) => `/api/v1/users/${userId}/lessons`,
-    // CONFIRMED by the team, verbatim.
+    // CONFIRMED by the team and by direct observation, verbatim.
     deleteUserPath: (userId: string) =>
       `/api/v1/users/${userId}/?fields[user]=is_deleted,deletion_reason`,
   },
