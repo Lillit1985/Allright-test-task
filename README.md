@@ -94,18 +94,21 @@ keep scheduled-run frequency conservative because of this.
   seen in real traffic.
 - Scheduling on stage is **not** mocked — real teacher matching against a
   shared, limited pool.
+- **The "charlie/long" funnel ends at `/uk/app/request-gotten`**, with copy
+  saying an administrator will pick a teacher and offer a time afterward —
+  see "Open question" below, this changes what "trial booked" means here.
 - Confirmed noise sources to exclude from capture: Intercom (`identify`,
   `ping`, `launcher_settings`, `check-captcha` traffic under `intercom.io`),
   GA4 `collect` calls, GTM — all excluded via `config.excludedHosts`.
 
-**Still guessed** (the actual trial-booking confirmation call hasn't been
-observed yet — the captures so far show fetching `available-timeslots`, not
-the confirmation step itself):
-- The exact call that books the trial lesson
-  (`config.apiEvents.trialBooked.urlPattern` — currently matches anything
-  under `/api/v1/...` containing `lesson(s)`/`trial`/`booking`, since the
-  user resource's `lessons` relationship name is confirmed but the create
-  call itself isn't).
+**Still guessed / hypothesis, not fully confirmed:**
+- Since there's no separate booking-entity call, `trialBooked.isValid` in
+  `src/config.ts` checks whether `lesson-date-wishes` / `tutor-id-wishes` /
+  `permanent-schedule` on the user resource flip to non-null. This is a
+  reasonable hypothesis from the field names seen in a real response, but
+  I haven't confirmed which field(s) the actual final "submit" click sets —
+  that needs one more look at the Payload/Response of the specific PATCH
+  fired right before landing on `/uk/app/request-gotten`.
 - The admin "find user by email" path (`config.adminApi.findUserByEmailPath`
   — now more likely correct, since it follows the confirmed `/api/v1/users`
   base + JSON:API filter convention, but still unverified).
@@ -113,7 +116,23 @@ the confirmation step itself):
   (`config.adminApi.findBookingsForUserPath` — relationship name `lessons`
   is confirmed from a real response's `relationships` block, but whether
   it's `/api/v1/users/:id/lessons` or a `/relationships/lessons` variant
-  isn't).
+  isn't, and — see below — it may legitimately be empty for a while after
+  a successful run, if a lesson only gets created once an admin acts).
+
+## Open question this raises for the team
+
+The task described success as "a trial lesson is booked." What the real
+flow actually does (at least for this funnel) is submit a qualified request
+for a human to finalize later — there's no lesson-with-a-real-teacher-and-time
+created synchronously. Worth confirming with the team:
+- Is "request submitted and accepted" the right success bar for automated
+  testing of this funnel, or is there a different funnel/flow where booking
+  really is synchronous?
+- Does the admin API's `lessons` relationship populate immediately on
+  request submission (even in a "pending" state), or only once a human
+  actually assigns a teacher? This affects whether the admin-API signal 2
+  check in the test can ever pass right after a run, or needs to tolerate
+  "no lessons yet" as a valid outcome for this specific funnel.
 
 **One thing to flag, not code-related:** a shared screenshot included a full
 `Authorization: Bearer …` token in plain text. I haven't used or stored it.

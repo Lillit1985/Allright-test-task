@@ -18,8 +18,15 @@ import {
  * Variant 1: robust business-outcome check.
  *
  * What this test asserts, deliberately, is ONLY:
- *   1. an account was created (with an id), and
- *   2. a trial lesson was booked for that account.
+ *   1. an account was created (real email present, with an id), and
+ *   2. a qualified trial-lesson request was submitted for that account
+ *      (schedule "wishes" present on the same user resource).
+ *
+ * Point 2 is a deliberate, confirmed reinterpretation of "trial lesson
+ * booked": for this funnel, the final screen states an administrator will
+ * pick a teacher and offer a time afterward — there's no synchronous
+ * booking-with-a-real-teacher happening inside the quiz itself. See
+ * STRATEGY.md and README for the open question this raises for the team.
  *
  * It never asserts on step count, step order, specific screen copy, or
  * which A/B variant was served — the active experiment variant is captured
@@ -31,11 +38,11 @@ import {
  *   - admin API lookup (what the system of record actually has) — skipped
  *     gracefully if ADMIN_BEARER_TOKEN isn't set
  *
- * Side effects: this creates a real account and books a real trial lesson
- * against a real teacher on stage (confirmed not mocked — stage has a
- * shared, limited teacher pool, so keep run frequency in check, see
- * STRATEGY.md section 3). The email/name are tagged so the account is
- * auto-excluded from analytics and can be found for cleanup in afterEach.
+ * Side effects: this creates a real account and submits a real trial-lesson
+ * request on stage (a human admin may act on it later — worth flagging to
+ * the team so QA-tagged requests aren't picked up as if from a real lead).
+ * The email/name are tagged so the account is auto-excluded from analytics
+ * and can be found for cleanup in afterEach.
  */
 
 let adminCtx: APIRequestContext | undefined;
@@ -104,7 +111,8 @@ test("completing the Charlie sign-up quiz creates an account and books a trial l
 
   expect(
     hasConfirmedEvent(capturedEvents, "trial-booked"),
-    "Expected a successful trial-booking API response, got: " +
+    "Expected a user PATCH response with schedule wishes set (lesson-date-wishes / " +
+      "tutor-id-wishes / permanent-schedule), got: " +
       JSON.stringify(capturedEvents.filter((e) => e.name === "trial-booked"))
   ).toBe(true);
 
@@ -135,8 +143,10 @@ test("completing the Charlie sign-up quiz creates an account and books a trial l
     const bookings = await findBookingsForUser(adminCtx, adminUser.id);
     expect(
       bookings.length,
-      `Admin API shows user ${adminUser.id} exists but has no bookings/lessons — ` +
-        `account creation succeeded, trial booking did not actually persist.`
+      `Admin API shows user ${adminUser.id} exists but has no lessons/requests — ` +
+        `account creation succeeded, the schedule request did not actually persist. ` +
+        `Note: for this funnel a "lesson" may not exist yet if an admin hasn't finalized ` +
+        `it — confirm with the team what the admin API actually returns for a pending request.`
     ).toBeGreaterThan(0);
   }
 });

@@ -1,24 +1,28 @@
 /**
  * Confirmed-vs-guessed status of everything below (as of the latest real
- * Network-tab capture):
+ * Network-tab capture, including the final step):
  *   CONFIRMED — the API is JSON:API-style (`/api/v1/...`, kebab-case
  *     attributes, `Content-Type: application/vnd.api+json`,
  *     `{"data":{"type":"...","id":"...","attributes":{...}}}`). The user
  *     resource lives at `/api/v1/users/:id`. Deletion is a soft-delete PATCH
  *     that cascades to cancel future lessons. Test accounts are
- *     auto-excluded from analytics by having "test"/"тест" in the name.
- *   IMPORTANT DESIGN SHIFT — there is no single "sign-up" POST. The quiz
+ *     auto-excluded from analytics by having "test"/"тест" in the name. The
+ *     "charlie/long" funnel ends at `/uk/app/request-gotten`.
+ *   IMPORTANT DESIGN SHIFT #1 — there is no single "sign-up" POST. The quiz
  *     creates the user record early (anonymous/lead), then PATCHes the same
  *     `/api/v1/users/:id` resource after nearly every step, accumulating
- *     `funnel-data` (goals, child info, schedule preferences, etc.). So
- *     "account created" can't be pinned to one specific call by URL alone —
- *     it's better verified by *content*: does the user resource carry a
- *     real email (the point at which a lead becomes a contactable account).
- *     `apiEvents.accountCreated.isValid` encodes exactly that, instead of
- *     relying on a URL pattern to mean something the API doesn't guarantee.
- *   STILL GUESSED — the exact call that books the trial lesson (not seen
- *     yet — the captures so far show fetching available-timeslots, not the
- *     confirmation step itself), and the admin "find user by email" path.
+ *     `funnel-data`. "Account created" is verified by *content* (a real
+ *     email present), not by matching one specific URL.
+ *   IMPORTANT DESIGN SHIFT #2 — the final screen for this funnel literally
+ *     says "an administrator will contact you and offer a time" — meaning
+ *     this funnel does NOT synchronously create a booked lesson with a
+ *     teacher/time; it submits a qualified request that a human finalizes
+ *     later. There's no separate booking-entity URL to intercept. Modeled,
+ *     as a hypothesis pending final confirmation, as the same user resource
+ *     picking up non-null schedule "wishes" (lesson-date-wishes /
+ *     tutor-id-wishes / permanent-schedule). See README for the open
+ *     question this raises about what "trial lesson booked" should even
+ *     mean for this specific funnel, worth raising with the team.
  */
 
 export const config = {
@@ -47,8 +51,19 @@ export const config = {
   /** Buttons/links the driver must never click, even if text matches a CTA pattern. */
   forbiddenActionPatterns: [/pay/i, /оплат/i, /checkout/i, /subscribe/i, /card/i],
 
-  /** URL the app navigates to once the quiz is fully done (guess — confirm with team). */
-  successUrlPatterns: [/\/sign-up\/(success|complete|thank-you)/i, /\/app\/dashboard/i, /\/app\/lesson/i],
+  /**
+   * URL the app navigates to once the quiz is fully done. CONFIRMED for the
+   * "charlie/long" funnel: /uk/app/request-gotten ("Дякуємо! Ваш запит
+   * отримано"). Kept the other guesses too since other funnels/A-B variants
+   * may land elsewhere — see STRATEGY.md for why URL alone still isn't the
+   * primary signal.
+   */
+  successUrlPatterns: [
+    /\/app\/request-gotten/i,
+    /\/sign-up\/(success|complete|thank-you)/i,
+    /\/app\/dashboard/i,
+    /\/app\/lesson/i,
+  ],
 
   /**
    * API calls that represent the two business facts we actually care about.
@@ -71,12 +86,28 @@ export const config = {
     },
     trialBooked: {
       name: "trial-booked",
-      // GUESSED — not yet observed. The confirmed relationship name on the
-      // user resource is "lessons" (see STRATEGY.md/README), so matching on
-      // that plus common synonyms until the real confirmation-step call is
-      // captured.
-      urlPattern: /\/api\/v1\/.*(lessons?|trial|booking)/i,
+      // REVISED based on the confirmed final page (see below): this funnel
+      // doesn't create a separate lesson/booking entity synchronously — the
+      // final screen ("Дякуємо! Ваш запит отримано") says an admin will
+      // pick a teacher and offer a time afterward. So there's no distinct
+      // "booking" URL to match; the same /api/v1/users/:id resource is
+      // PATCHed with the user's schedule "wishes" (lesson-date-wishes,
+      // tutor-id-wishes, tutor-type-wishes — all seen as null earlier in
+      // the flow, in a response attached to a real capture). isValid checks
+      // whether any of those flipped to non-null.
+      // HYPOTHESIS, NOT YET CONFIRMED: needs one more look at the payload/
+      // response of the specific PATCH fired on the final "submit" click,
+      // to see exactly which field(s) actually change — see README.
+      urlPattern: /\/api\/v1\/users\/\d+/i,
       methods: ["POST", "PATCH", "PUT"],
+      isValid: (body: unknown): boolean => {
+        const attrs = (body as any)?.data?.attributes ?? {};
+        return (
+          attrs["lesson-date-wishes"] != null ||
+          attrs["tutor-id-wishes"] != null ||
+          attrs["permanent-schedule"] != null
+        );
+      },
     },
   },
 
