@@ -91,21 +91,20 @@ export const config = {
       // final screen ("Дякуємо! Ваш запит отримано") says an admin will
       // pick a teacher and offer a time afterward. So there's no distinct
       // "booking" URL to match; the same /api/v1/users/:id resource is
-      // PATCHed with the user's schedule "wishes" (lesson-date-wishes,
-      // tutor-id-wishes, tutor-type-wishes — all seen as null earlier in
-      // the flow, in a response attached to a real capture). isValid checks
-      // whether any of those flipped to non-null.
-      // HYPOTHESIS, NOT YET CONFIRMED: needs one more look at the payload/
-      // response of the specific PATCH fired on the final "submit" click,
-      // to see exactly which field(s) actually change — see README.
+      // PATCHed, and the real observed fields for this are
+      // "lesson-time-start", "lesson-id", "lesson-tutor-type-id" (all seen
+      // as null mid-flow in a real capture; "lesson-duration": 30 is set
+      // from the start and isn't a useful signal on its own).
+      // CORRECTED from an earlier wrong guess ("lesson-date-wishes" doesn't
+      // actually appear in the real payload at all).
       urlPattern: /\/api\/v1\/users\/\d+/i,
       methods: ["POST", "PATCH", "PUT"],
       isValid: (body: unknown): boolean => {
         const attrs = (body as any)?.data?.attributes ?? {};
         return (
-          attrs["lesson-date-wishes"] != null ||
-          attrs["tutor-id-wishes"] != null ||
-          attrs["permanent-schedule"] != null
+          attrs["lesson-time-start"] != null ||
+          attrs["lesson-id"] != null ||
+          attrs["lesson-tutor-type-id"] != null
         );
       },
     },
@@ -131,12 +130,14 @@ export const config = {
   },
 
   /**
-   * Response header/cookie names that might carry the assigned experiment
-   * variant. Purely diagnostic — never used to branch test behavior (the
-   * whole point of this suite is not needing to know the variant), only to
-   * tag failures so "which variant broke" is answerable from the report
-   * instead of a re-run-and-guess exercise. Confirm real names with the
-   * team; harmless (just won't capture anything) if wrong.
+   * CONFIRMED, directly from a real capture: the assigned A/B variant is
+   * exposed right in the user resource's attributes as
+   * `experiments: [{alias, variant}]` (e.g. `{"alias":"QUIZ_CHARLIE_VS_AIGEN","variant":"A"}`).
+   * `extractExperiments()` in outcomeCapture.ts reads this directly — no
+   * guessing needed. The cookie/header patterns below are kept only as a
+   * secondary fallback in case a future variant isn't reflected in the user
+   * resource for some reason; still purely diagnostic either way, never
+   * used to branch test behavior.
    */
   experimentDiagnostics: {
     cookieNamePatterns: [/experiment/i, /variant/i, /^ab[-_]/i],

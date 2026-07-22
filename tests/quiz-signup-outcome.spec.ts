@@ -3,6 +3,7 @@ import {
   captureOutcomeEvents,
   captureExperimentDiagnostics,
   entityIdFor,
+  extractExperiments,
   hasConfirmedEvent,
 } from "../src/outcomeCapture";
 import { walkQuizToCompletion } from "../src/quizDriver";
@@ -77,6 +78,10 @@ test("completing the Charlie sign-up quiz creates an account and books a trial l
   await page.goto("/uk/app/sign-up/long/charlie/age-range");
 
   const result = await walkQuizToCompletion(page, capturedEvents, testEmail);
+
+  // Confirmed mechanism: the assigned variant(s) live right in the user
+  // resource's response body — pull them out now that we have the events.
+  experimentDiagnostics.fromResponseBody = extractExperiments(capturedEvents);
 
   await testInfo.attach("captured-api-events.json", {
     body: JSON.stringify(result.capturedEvents, null, 2),

@@ -97,18 +97,24 @@ keep scheduled-run frequency conservative because of this.
 - **The "charlie/long" funnel ends at `/uk/app/request-gotten`**, with copy
   saying an administrator will pick a teacher and offer a time afterward —
   see "Open question" below, this changes what "trial booked" means here.
+- **The assigned A/B variant is exposed directly in the user resource's
+  response body**: `experiments: [{"alias":"QUIZ_CHARLIE_VS_AIGEN","variant":"A"}]`.
+  `extractExperiments()` reads this straight from a captured response — no
+  cookie/header guessing needed (kept only as a fallback).
 - Confirmed noise sources to exclude from capture: Intercom (`identify`,
   `ping`, `launcher_settings`, `check-captcha` traffic under `intercom.io`),
   GA4 `collect` calls, GTM — all excluded via `config.excludedHosts`.
 
 **Still guessed / hypothesis, not fully confirmed:**
 - Since there's no separate booking-entity call, `trialBooked.isValid` in
-  `src/config.ts` checks whether `lesson-date-wishes` / `tutor-id-wishes` /
-  `permanent-schedule` on the user resource flip to non-null. This is a
-  reasonable hypothesis from the field names seen in a real response, but
-  I haven't confirmed which field(s) the actual final "submit" click sets —
-  that needs one more look at the Payload/Response of the specific PATCH
-  fired right before landing on `/uk/app/request-gotten`.
+  `src/config.ts` checks whether `lesson-time-start` / `lesson-id` /
+  `lesson-tutor-type-id` on the user resource flip to non-null (these are
+  the real field names seen in a captured response — an earlier guess,
+  `lesson-date-wishes`, turned out not to exist in the actual payload at
+  all and has been corrected). Still needs one more look at the final
+  "submit" click's response to confirm they actually flip to non-null
+  rather than staying null even on a successful request (consistent with
+  the "admin finalizes later" copy on the success page).
 - The admin "find user by email" path (`config.adminApi.findUserByEmailPath`
   — now more likely correct, since it follows the confirmed `/api/v1/users`
   base + JSON:API filter convention, but still unverified).
@@ -146,11 +152,14 @@ design resilient to variant changes" to my design. The resilience part is
 the whole point of Variant 1 — the test never needs to know the variant,
 because it only checks the outcome. For the "which variant did this run
 get" part (useful for debugging a failure, not for the test's own logic),
-`captureExperimentDiagnostics()` records any cookie or response header whose
-*name* looks experiment-related and attaches it to the test report. It's
-purely diagnostic and never gates an assertion — if the team confirms the
-real cookie/header name, that's a one-line change in
-`config.experimentDiagnostics`.
+a real capture showed the answer is simpler than expected: the assigned
+variant is right in the user resource's response body as
+`experiments: [{"alias":"QUIZ_CHARLIE_VS_AIGEN","variant":"A"}]`.
+`extractExperiments()` in `src/outcomeCapture.ts` reads this directly from
+an already-captured response and attaches it to the test report. Cookie/
+header scanning (`captureExperimentDiagnostics`) is kept as a fallback only,
+in case some other variant type isn't reflected on the user resource. None
+of this ever gates an assertion.
 
 ## What I'd do with more time
 

@@ -93,8 +93,30 @@ export function entityIdFor(events: CapturedApiEvent[], name: string): string | 
 }
 
 export interface ExperimentDiagnostics {
+  /** CONFIRMED source: {alias, variant} pairs read directly from a captured
+   * user-resource response body's `experiments` attribute. */
+  fromResponseBody: Array<{ alias: string; variant: string }>;
+  /** Fallback, in case a variant isn't reflected in the user resource. */
   cookies: Record<string, string>;
   headers: Record<string, string>;
+}
+
+/**
+ * Pulls `experiments: [{alias, variant}]` straight out of any captured
+ * user-resource response — this is the CONFIRMED mechanism (see config.ts),
+ * not a guess. Purely diagnostic: never used to branch test behavior, only
+ * attached to the report so a failure can be correlated with a variant.
+ */
+export function extractExperiments(
+  events: CapturedApiEvent[]
+): Array<{ alias: string; variant: string }> {
+  for (const e of events) {
+    const experiments = ((e.body as any)?.data?.attributes?.experiments ?? null) as
+      | Array<{ alias: string; variant: string }>
+      | null;
+    if (Array.isArray(experiments) && experiments.length > 0) return experiments;
+  }
+  return [];
 }
 
 /**
@@ -104,7 +126,7 @@ export interface ExperimentDiagnostics {
  * its behavior on that value. See STRATEGY.md, section 2.
  */
 export async function captureExperimentDiagnostics(page: Page): Promise<ExperimentDiagnostics> {
-  const diagnostics: ExperimentDiagnostics = { cookies: {}, headers: {} };
+  const diagnostics: ExperimentDiagnostics = { fromResponseBody: [], cookies: {}, headers: {} };
 
   const cookies = await page.context().cookies();
   for (const cookie of cookies) {
