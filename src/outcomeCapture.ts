@@ -18,6 +18,8 @@ export function captureOutcomeEvents(page: Page): CapturedApiEvent[] {
     const url = response.url();
     const request = response.request();
 
+    if (config.excludedHosts.some((p) => p.test(new URL(url).hostname))) return;
+
     for (const [, def] of Object.entries(config.apiEvents)) {
       if (!def.urlPattern.test(url)) continue;
       if (!def.methods.includes(request.method())) continue;

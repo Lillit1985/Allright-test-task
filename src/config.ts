@@ -63,6 +63,17 @@ export const config = {
     },
   },
 
+  /**
+   * Third-party hosts CONFIRMED (from a real Network-tab capture) to be
+   * analytics/tracking noise — Intercom launcher/metrics calls, GA4 collect
+   * calls. Belt-and-suspenders on top of the `/api/` requirement already in
+   * apiEvents patterns: GA4 collect calls embed the page's own URL (which
+   * legitimately contains "sign-up") in an encoded referrer query param, so
+   * relying on urlPattern alone was a latent false-positive risk. This list
+   * is checked first and short-circuits capture regardless of urlPattern.
+   */
+  excludedHosts: [/\bintercom\.io$/i, /\bgoogle-analytics\.com$/i, /\bgoogletagmanager\.com$/i],
+
   /** Safety limits for the generic forward-walker. */
   driver: {
     maxSteps: 25,
