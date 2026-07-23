@@ -1,5 +1,3 @@
-
-
 export const config = {
   ctaPatterns: [
     /продовжити/i,
