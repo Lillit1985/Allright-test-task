@@ -15,11 +15,6 @@ export interface AdminBookingRecord {
   [key: string]: unknown;
 }
 
-/**
- * Creates an authenticated request context against the admin API.
- * Throws early with a clear message if the token isn't set, rather than
- * failing deep inside a fetch with a confusing 401.
- */
 export async function createAdminApiContext(): Promise<APIRequestContext> {
   const token = process.env[config.adminApi.bearerTokenEnvVar];
   if (!token) {
@@ -38,12 +33,6 @@ export async function createAdminApiContext(): Promise<APIRequestContext> {
   });
 }
 
-/**
- * Pulls an id out of a JSON:API-shaped body ({"data":{"id": ...}} or a
- * {"data":[{"id": ...}, ...]} list), falling back to a bare `id` field for
- * anything that isn't strict JSON:API. Used both for admin-lookup responses
- * and for the account-creation/booking responses captured from the browser.
- */
 export function extractEntityId(body: unknown): string | null {
   if (!body || typeof body !== "object") return null;
   const obj = body as Record<string, unknown>;
@@ -58,16 +47,6 @@ export function extractEntityId(body: unknown): string | null {
   }
   return (obj["id"] as string) ?? null;
 }
-
-/**
- * Looks up the test user by the tagged email. Returns null if not found
- * (e.g. the account-creation step actually failed) rather than throwing —
- * "not found" is a legitimate, informative test outcome here.
- *
- * NOTE: path is a JSON:API-filter guess, not yet confirmed against the real
- * admin API (see config.ts) — response parsing here handles the standard
- * JSON:API list shape since that's the confirmed convention for this API.
- */
 export async function findUserByEmail(
   ctx: APIRequestContext,
   email: string
@@ -107,19 +86,6 @@ export async function findBookingsForUser(
     };
   });
 }
-
-/**
- * Best-effort cleanup via the CONFIRMED soft-delete mechanism: JSON:API
- * PATCH setting is-deleted=true, which the team confirmed cascades to
- * cancel the user's future lessons (so no separate lesson-cancellation
- * call is needed).
- *
- * Deliberately never throws — a failed cleanup shouldn't fail the test
- * itself (assertions already ran by the time this executes), it should
- * just be visible in the logs so someone can purge stage manually if it
- * keeps happening. Given stage has a shared, limited teacher pool, a
- * silent cleanup failure is worth watching, not ignoring.
- */
 export async function deleteTestUser(ctx: APIRequestContext, userId: string): Promise<boolean> {
   try {
     const res = await ctx.patch(config.adminApi.deleteUserPath(userId), {
