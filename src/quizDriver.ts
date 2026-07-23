@@ -2,21 +2,6 @@ import { Page } from "@playwright/test";
 import { config } from "./config";
 import { CapturedApiEvent, QuizRunResult } from "./types";
 import { hasConfirmedEvent } from "./outcomeCapture";
-
-/**
- * Walks the quiz forward without any knowledge of its current step
- * structure. It does not assert anything about individual steps — that is
- * intentional (see STRATEGY.md, "what I deliberately do not fix"). Its only
- * job is to reach a terminal state so the outcome-level assertions in the
- * test can run against something real.
- *
- * Strategy per iteration:
- *  1. If any answerable input is visible (radio/checkbox/combobox/textbox),
- *     pick a valid value generically (first enabled option / sample text).
- *  2. Click the most plausible forward CTA.
- *  3. Wait for either navigation, network idle, or DOM to settle.
- *  4. Stop when a success signal is observed, or when limits are hit.
- */
 export async function walkQuizToCompletion(
   page: Page,
   capturedEvents: CapturedApiEvent[],
@@ -45,10 +30,6 @@ export async function walkQuizToCompletion(
 
     const clicked = await clickForwardCta(page);
     if (!clicked) {
-      // No known way forward: either we're stuck on an unrecognized screen,
-      // or the quiz has genuinely nothing left to do. Either way, this is
-      // a real signal, not something to paper over — the test decides what
-      // to do with it.
       break;
     }
 
@@ -71,7 +52,6 @@ export async function walkQuizToCompletion(
 }
 
 async function answerVisibleInputsGenerically(page: Page, testEmail: string): Promise<void> {
-  // Single/multi choice presented as radio or checkbox: pick the first enabled one.
   const radios = page.locator('input[type="radio"]:visible, [role="radio"]:visible');
   if ((await radios.count()) > 0) {
     const first = radios.first();
@@ -79,9 +59,6 @@ async function answerVisibleInputsGenerically(page: Page, testEmail: string): Pr
       await first.check({ force: true }).catch(() => first.click({ force: true }).catch(() => {}));
     }
   }
-
-  // Email field: use the tagged test email so the account is identifiable
-  // and cleanable, and so the admin-API lookup after the run can find it.
   const emailInputs = page.locator('input[type="email"]:visible');
   const emailCount = await emailInputs.count();
   for (let i = 0; i < emailCount; i++) {
@@ -91,10 +68,6 @@ async function answerVisibleInputsGenerically(page: Page, testEmail: string): Pr
       await el.fill(testEmail).catch(() => {});
     }
   }
-
-  // Other free-text fields: fill with the confirmed test-data naming
-  // convention ("test"/"тест" in the name auto-excludes the account from
-  // analytics — see config.testUser and STRATEGY.md/README).
   const textInputs = page.locator(
     'input[type="text"]:visible, input:not([type]):visible, textarea:visible'
   );
@@ -106,8 +79,6 @@ async function answerVisibleInputsGenerically(page: Page, testEmail: string): Pr
       await el.fill(config.testUser.name).catch(() => {});
     }
   }
-
-  // Dropdown/combobox: open and pick the first option, if present.
   const selects = page.locator("select:visible");
   const selectCount = await selects.count();
   for (let i = 0; i < selectCount; i++) {
