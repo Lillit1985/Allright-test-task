@@ -2,20 +2,6 @@ import { Page } from "@playwright/test";
 import { config } from "./config";
 import { extractEntityId } from "./adminApiClient";
 import { CapturedApiEvent } from "./types";
-
-/**
- * Attaches a response listener BEFORE navigation starts and records any
- * response matching the two business-critical API patterns. This is the
- * core of the "AB-agnostic" verification: it never looks at the DOM/UI at
- * all, only at whether the two facts we care about actually happened on
- * the wire.
- *
- * Every matching call is captured (not just the "final" one) because, as
- * confirmed by a real run, account creation isn't one clean call — the same
- * `/api/v1/users/:id` resource gets PATCHed repeatedly through the quiz.
- * Which of those calls actually represents "account created" is decided
- * afterwards, by content (see `isConfirmedEvent`), not by picking one URL.
- */
 export function captureOutcomeEvents(page: Page): CapturedApiEvent[] {
   const captured: CapturedApiEvent[] = [];
 
@@ -33,8 +19,6 @@ export function captureOutcomeEvents(page: Page): CapturedApiEvent[] {
       try {
         body = await response.json();
       } catch {
-        // non-JSON or empty body — still record status, that's enough signal
-        // for events with no content-based `isValid` check.
       }
 
       captured.push({
@@ -52,21 +36,9 @@ export function captureOutcomeEvents(page: Page): CapturedApiEvent[] {
 function defFor(name: string) {
   return Object.values(config.apiEvents).find((d) => d.name === name);
 }
-
-/**
- * True status-only check: did we see a successful response for this event
- * name at all. Used by the driver as a coarse "can I stop walking" signal.
- */
 export function hasSuccessfulEvent(events: CapturedApiEvent[], name: string): boolean {
   return events.some((e) => e.name === name && e.status >= 200 && e.status < 300);
 }
-
-/**
- * The real assertion-grade check: successful status AND, where the event
- * definition has one, the content-based `isValid` predicate passes (e.g.
- * "account-created" requires the response to actually carry an email —
- * see config.ts for why URL/status alone isn't enough for that event).
- */
 export function hasConfirmedEvent(events: CapturedApiEvent[], name: string): boolean {
   const def = defFor(name);
   return events.some((e) => {
@@ -78,8 +50,6 @@ export function hasConfirmedEvent(events: CapturedApiEvent[], name: string): boo
     return true;
   });
 }
-
-/** The id the API returned for the event that satisfied `hasConfirmedEvent`, if any. */
 export function entityIdFor(events: CapturedApiEvent[], name: string): string | null {
   const def = defFor(name);
   const event = events.find((e) => {
@@ -93,20 +63,10 @@ export function entityIdFor(events: CapturedApiEvent[], name: string): string | 
 }
 
 export interface ExperimentDiagnostics {
-  /** CONFIRMED source: {alias, variant} pairs read directly from a captured
-   * user-resource response body's `experiments` attribute. */
   fromResponseBody: Array<{ alias: string; variant: string }>;
-  /** Fallback, in case a variant isn't reflected in the user resource. */
   cookies: Record<string, string>;
   headers: Record<string, string>;
 }
-
-/**
- * Pulls `experiments: [{alias, variant}]` straight out of any captured
- * user-resource response — this is the CONFIRMED mechanism (see config.ts),
- * not a guess. Purely diagnostic: never used to branch test behavior, only
- * attached to the report so a failure can be correlated with a variant.
- */
 export function extractExperiments(
   events: CapturedApiEvent[]
 ): Array<{ alias: string; variant: string }> {
@@ -118,13 +78,6 @@ export function extractExperiments(
   }
   return [];
 }
-
-/**
- * Purely diagnostic: records any cookie/header that looks like it carries
- * an experiment/variant assignment, so a failure can be correlated with
- * "which A/B variant was this run served" without the test ever branching
- * its behavior on that value. See STRATEGY.md, section 2.
- */
 export async function captureExperimentDiagnostics(page: Page): Promise<ExperimentDiagnostics> {
   const diagnostics: ExperimentDiagnostics = { fromResponseBody: [], cookies: {}, headers: {} };
 
